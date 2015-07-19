@@ -6,3 +6,4 @@ authors = ["Jim Grandpre <jimtla@gmail.com>"]
 [dependencies]
 byteorder = "*"
 wrapped_enum = "*"
+rustc-serialize = "*"
