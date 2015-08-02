@@ -7,3 +7,4 @@ authors = ["Jim Grandpre <jimtla@gmail.com>"]
 byteorder = "*"
 wrapped_enum = "*"
 rustc-serialize = "*"
+matches = "*"

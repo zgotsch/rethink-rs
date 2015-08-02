@@ -78,63 +78,99 @@ fn read_string<T: Read>(r : &mut T) -> Result<String, Error> {
     Ok(s)
 }
 
+pub use ConnectionState::*;
+#[derive(Debug)]
+pub enum ConnectionState {
+    Open(TcpStream),
+    Closed,
+}
+
 pub struct Connection {
-    stream: TcpStream,
+    state: ConnectionState,
     query_count: u64,
+    host: String,
+    port: u16,
     default_db: String,
     auth_key: String,
     timeout_secs: u32,
 }
 
 impl Connection {
-    pub fn connect(host: &str, port: u16, default_db: &str, auth_key: &str, timeout_secs: u32) -> Result<Connection, Error> {
-        let stream = try!(TcpStream::connect((host, port)));
-        Ok(Connection{
-            stream: stream,
-            query_count: 0,
-            default_db: default_db.to_string(),
-            auth_key: auth_key.to_string(),
-            timeout_secs: timeout_secs,
-        })
+    pub fn connect(&mut self) -> Option<Error> {
+        match self.state {
+            Open(_) => Some(From::from(UnknownError::new(
+                "Connection must be closed before calling connect.".into()
+            ))),
+            Closed => match TcpStream::connect((&*self.host, self.port)) {
+                Ok(stream) => {
+                    self.state = Open(stream);
+                    None
+                },
+                Err(e) => {
+                    Some(Error::ConnectionError(format!("{}", e)))
+                }
+            }
+        }
+    }
+
+    pub fn close(&mut self) {
+        self.state = Closed
+    }
+
+    pub fn reconnect(&mut self) -> Option<Error> {
+        self.close();
+        self.connect()
     }
 
     fn handshake(&mut self) -> Result<(), Error> {
         let v4 = 0x400c2d20u32;
         let json = 0x7e6970c7u32;
-        try!(self.stream.write_u32::<LittleEndian>(v4));
-        try!(self.stream.write_u32::<LittleEndian>(self.auth_key.len() as u32));
-        for byte in self.auth_key.bytes() {
-            try!(self.stream.write_u8(byte));
-        }
-        try!(self.stream.write_u32::<LittleEndian>(json));
-        let res = try!(read_string(&mut self.stream));
-        if res != "SUCCESS" {
-          Err(Error::ConnectionError(res))
-        } else {
-          Ok(())
+
+        match self.state {
+            Open(ref mut stream) => {
+                try!(stream.write_u32::<LittleEndian>(v4));
+                try!(stream.write_u32::<LittleEndian>(self.auth_key.len() as u32));
+                for byte in self.auth_key.bytes() {
+                    try!(stream.write_u8(byte));
+                }
+                try!(stream.write_u32::<LittleEndian>(json));
+                let res = try!(read_string(stream));
+                if res != "SUCCESS" {
+                  Err(Error::ConnectionError(res))
+                } else {
+                  Ok(())
+                }
+            },
+            Closed => Err(From::from(UnknownError::new("Tried to handshake on a closed connection!".to_string())))
         }
     }
 
     fn send(&mut self, raw_string : &str) -> Result<json::Json, Error> {
-      self.query_count += 1;
-      try!(self.stream.write_u64::<LittleEndian>(self.query_count));
+        match self.state {
+            Open(ref mut stream) => {
+                self.query_count += 1;
+                try!(stream.write_u64::<LittleEndian>(self.query_count));
 
-      let bytes = raw_string.as_bytes();
-      try!(self.stream.write_u32::<LittleEndian>(bytes.len() as u32));
-      try!(self.stream.write_all(bytes));
+                let bytes = raw_string.as_bytes();
+                try!(stream.write_u32::<LittleEndian>(bytes.len() as u32));
+                try!(stream.write_all(bytes));
 
-      let query_token_resp = try!(self.stream.read_u64::<LittleEndian>());
-      if query_token_resp != self.query_count {
-        return Err(UnknownError::new(
-          format!("Query token ({}) does not match {}",
-            query_token_resp, self.query_count)
-          ).into()
-        );
-      }
+                let query_token_resp = try!(stream.read_u64::<LittleEndian>());
+                if query_token_resp != self.query_count {
+                  return Err(UnknownError::new(
+                    format!("Query token ({}) does not match {}",
+                      query_token_resp, self.query_count)
+                    ).into()
+                  );
+                }
 
-      let resp_len = self.stream.read_u32::<LittleEndian>().unwrap();
-      let mut resp_bytes = Read::by_ref(&mut self.stream).take(resp_len as u64);
-      json::Json::from_reader(&mut resp_bytes).map_err(Error::from)
+                let resp_len = stream.read_u32::<LittleEndian>().unwrap();
+                let mut resp_bytes = Read::by_ref(stream).take(resp_len as u64);
+                json::Json::from_reader(&mut resp_bytes).map_err(Error::from)
+            },
+            Closed => Err(From::from(UnknownError::new("Tried to send on a closed connection!".to_string())))
+        }
+
     }
 }
 
@@ -146,7 +182,19 @@ impl Rethink {
     }
 
     pub fn connect(host: &str, port: u16, default_db: &str, auth_key: &str, timeout_secs: u32) -> Result<Connection, Error> {
-        Connection::connect(host, port, default_db, auth_key, timeout_secs)
+        let mut c = Connection{
+            state: Closed,
+            query_count: 0,
+            host: host.to_string(),
+            port: port,
+            default_db: default_db.to_string(),
+            auth_key: auth_key.to_string(),
+            timeout_secs: timeout_secs,
+        };
+        match c.connect() {
+            Some(error) => Err(error),
+            None => Ok(c)
+        }
     }
 }
 
@@ -156,4 +204,21 @@ fn it_works() {
   conn.handshake().unwrap();
   println!("{}", conn.send(r#"[1,[39,[[15,[[14,["blog"]],"users"]],{"name":"Michel"}]],{}]"#).unwrap());
   panic!("ASDF");
+}
+
+#[macro_use] extern crate matches;
+
+#[test]
+fn connect_disconnect() {
+    let mut conn = Rethink::connect_default().unwrap();
+    assert!(matches!(conn.state, Open(_)));
+
+    conn.close();
+    assert!(matches!(conn.state, Closed));
+
+    conn.connect();
+    assert!(matches!(conn.state, Open(_)));
+
+    conn.reconnect();
+    assert!(matches!(conn.state, Open(_)));
 }
