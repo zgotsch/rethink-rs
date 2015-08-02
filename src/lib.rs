@@ -122,6 +122,10 @@ impl Connection {
         self.connect()
     }
 
+    pub fn use_(&mut self, default_db: Option<&str>) {
+        self.default_db = default_db.map(|x| x.to_string());
+    }
+
     fn handshake(&mut self) -> Result<(), Error> {
         let v4 = 0x400c2d20u32;
         let json = 0x7e6970c7u32;
@@ -220,4 +224,16 @@ fn connect_disconnect() {
 
     conn.reconnect();
     assert!(matches!(conn.state, Open(_)));
+}
+
+#[test]
+fn use_default_db() {
+    let mut conn = Rethink::connect_default().unwrap();
+    assert!(matches!(conn.default_db, Some(ref db_name) if db_name == "test"));
+
+    conn.use_(Some("other_name"));
+    assert!(matches!(conn.default_db, Some(ref db_name) if db_name == "other_name"));
+
+    conn.use_(None);
+    assert!(matches!(conn.default_db, None));
 }
