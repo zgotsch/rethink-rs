@@ -81,14 +81,20 @@ fn read_string<T: Read>(r : &mut T) -> Result<String, Error> {
 pub struct Connection {
     stream: TcpStream,
     query_count: u64,
+    default_db: String,
+    auth_key: String,
+    timeout_secs: u32,
 }
 
 impl Connection {
-    fn connect() -> Result<Connection, Error> {
-        let stream = try!(TcpStream::connect("127.0.0.1:28015"));
+    pub fn connect(host: &str, port: u16, default_db: &str, auth_key: &str, timeout_secs: u32) -> Result<Connection, Error> {
+        let stream = try!(TcpStream::connect((host, port)));
         Ok(Connection{
             stream: stream,
             query_count: 0,
+            default_db: default_db.to_string(),
+            auth_key: auth_key.to_string(),
+            timeout_secs: timeout_secs,
         })
     }
 
@@ -96,7 +102,10 @@ impl Connection {
         let v4 = 0x400c2d20u32;
         let json = 0x7e6970c7u32;
         try!(self.stream.write_u32::<LittleEndian>(v4));
-        try!(self.stream.write_u32::<LittleEndian>(0));
+        try!(self.stream.write_u32::<LittleEndian>(self.auth_key.len() as u32));
+        for byte in self.auth_key.bytes() {
+            try!(self.stream.write_u8(byte));
+        }
         try!(self.stream.write_u32::<LittleEndian>(json));
         let res = try!(read_string(&mut self.stream));
         if res != "SUCCESS" {
@@ -129,10 +138,21 @@ impl Connection {
     }
 }
 
+pub struct Rethink;
+
+impl Rethink {
+    pub fn connect_default() -> Result<Connection, Error> {
+        Rethink::connect(&"localhost".to_string(), 28015, &"test".to_string(), &"".to_string(), 20)
+    }
+
+    pub fn connect(host: &str, port: u16, default_db: &str, auth_key: &str, timeout_secs: u32) -> Result<Connection, Error> {
+        Connection::connect(host, port, default_db, auth_key, timeout_secs)
+    }
+}
+
 #[test]
 fn it_works() {
-
-  let mut conn = Connection::connect().unwrap();
+  let mut conn = Rethink::connect_default().unwrap();
   conn.handshake().unwrap();
   println!("{}", conn.send(r#"[1,[39,[[15,[[14,["blog"]],"users"]],{"name":"Michel"}]],{}]"#).unwrap());
   panic!("ASDF");
