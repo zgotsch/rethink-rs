@@ -4,7 +4,6 @@ extern crate rustc_serialize;
 use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
 use std::io::prelude::*;
 use std::net::TcpStream;
-use std::str;
 use std::str::{Utf8Error};
 use std::string::{FromUtf8Error};
 use std::fmt;
@@ -109,12 +108,11 @@ impl Connection {
 
     fn send(&mut self, raw_string : &str) -> Result<json::Json, Error> {
       self.query_count += 1;
-      self.stream.write_u64::<LittleEndian>(self.query_count);
+      try!(self.stream.write_u64::<LittleEndian>(self.query_count));
 
       let bytes = raw_string.as_bytes();
-      self.stream.write_u32::<LittleEndian>(bytes.len() as u32);
-      self.stream.write_all(bytes);
-
+      try!(self.stream.write_u32::<LittleEndian>(bytes.len() as u32));
+      try!(self.stream.write_all(bytes));
 
       let query_token_resp = try!(self.stream.read_u64::<LittleEndian>());
       if query_token_resp != self.query_count {
