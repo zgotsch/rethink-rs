@@ -90,7 +90,7 @@ pub struct Connection {
     query_count: u64,
     host: String,
     port: u16,
-    default_db: String,
+    default_db: Option<String>,
     auth_key: String,
     timeout_secs: u32,
 }
@@ -170,7 +170,6 @@ impl Connection {
             },
             Closed => Err(From::from(UnknownError::new("Tried to send on a closed connection!".to_string())))
         }
-
     }
 }
 
@@ -178,16 +177,16 @@ pub struct Rethink;
 
 impl Rethink {
     pub fn connect_default() -> Result<Connection, Error> {
-        Rethink::connect(&"localhost".to_string(), 28015, &"test".to_string(), &"".to_string(), 20)
+        Rethink::connect(&"localhost".to_string(), 28015, Some(&"test".to_string()), &"".to_string(), 20)
     }
 
-    pub fn connect(host: &str, port: u16, default_db: &str, auth_key: &str, timeout_secs: u32) -> Result<Connection, Error> {
+    pub fn connect(host: &str, port: u16, default_db: Option<&str>, auth_key: &str, timeout_secs: u32) -> Result<Connection, Error> {
         let mut c = Connection{
             state: Closed,
             query_count: 0,
             host: host.to_string(),
             port: port,
-            default_db: default_db.to_string(),
+            default_db: default_db.map(|x| x.to_string()),
             auth_key: auth_key.to_string(),
             timeout_secs: timeout_secs,
         };
