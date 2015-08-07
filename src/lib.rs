@@ -245,18 +245,43 @@ pub enum Datum {
     // Binary SB.ByteString
 }
 
+impl Datum {
+    pub fn serialize(&self) -> String {
+        match self {
+            &Datum::Null => "null".to_string(),
+            &Datum::Bool(b) => (if b { "true" } else { "false" }).to_string(),
+            &Datum::String(ref s) => s.clone(),
+            &Datum::Number(n) => n.to_string(),
+            _ => "unimplemented".to_string()
+        }
+    }
+}
+
 impl ReQL {
     pub fn string(string: &str) -> Self {
         ReQL::Datum(Datum::String(string.to_string()))
     }
 
     pub fn run(&self, connection: &mut Connection) -> Result<json::Json, Error> {
-        let string_reql = self.serialize();
+        let string_reql = self.serialize_toplevel();
         connection.send(&string_reql)
     }
 
-    pub fn serialize(&self) -> String {
-        r#"[1,"foo",{}]"#.to_string()
+    fn serialize_toplevel(&self) -> String {
+        format!("[1,{},{{}}]", self.serialize())
+    }
+
+    fn serialize(&self) -> String {
+        match self {
+            &ReQL::Term{ref command,
+                        ref arguments,
+                        ref optional_arguments} => {
+                            format!("[{},{:?},{}]", *command as u32, arguments.iter().map(|a| {
+                                a.serialize()
+                            }).collect::<Vec<_>>(), "{}")
+                        },
+            &ReQL::Datum(ref d) => d.serialize()
+        }
     }
 }
 
