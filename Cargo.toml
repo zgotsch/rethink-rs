@@ -8,3 +8,6 @@ byteorder = "*"
 wrapped_enum = "*"
 rustc-serialize = "*"
 matches = "*"
+
+[dependencies.protobuf]
+git = "https://github.com/stepancheg/rust-protobuf.git"

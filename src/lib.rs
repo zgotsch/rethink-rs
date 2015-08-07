@@ -9,6 +9,11 @@ use std::string::{FromUtf8Error};
 use std::fmt;
 use std::io;
 use std::convert::From;
+use std::collections::hash_map::HashMap;
+
+extern crate protobuf; // depend on rust-protobuf runtime
+pub mod ql2;
+use ql2::Term_TermType;
 
 use rustc_serialize::json;
 
@@ -200,6 +205,17 @@ impl Rethink {
         }
     }
 }
+
+pub struct ReQL {
+    command: Term_TermType,
+    arguments: Vec<ReQL>,
+    optional_arguments: HashMap<String, ReQL>
+}
+
+impl ReQL {
+
+}
+
 
 #[test]
 fn it_works() {
