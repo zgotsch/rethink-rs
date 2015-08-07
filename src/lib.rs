@@ -207,16 +207,57 @@ impl Rethink {
             }
         }
     }
+
+    pub fn db_create(db_name: &str) -> ReQL {
+        let mut args = Vec::new();
+        args.push(ReQL::string(db_name));
+
+        ReQL::Term {
+            command: Term_TermType::DB_CREATE,
+            arguments: args,
+            optional_arguments: HashMap::new()
+        }
+    }
 }
 
-pub struct ReQL {
-    command: Term_TermType,
-    arguments: Vec<ReQL>,
-    optional_arguments: HashMap<String, ReQL>
+#[derive(Debug)]
+pub enum ReQL {
+    Term {
+        command: Term_TermType,
+        arguments: Vec<ReQL>,
+        optional_arguments: HashMap<String, ReQL>
+    },
+    Datum(Datum)
+}
+
+#[derive(Debug)]
+pub enum Datum {
+    Null,
+    Bool(bool),
+    String(String),
+    Number(f64),
+    Array(Vec<Datum>),
+    Object(HashMap<String, Datum>),
+    // Time ZonedTime |
+    // Point LonLat |
+    // Line Line |
+    // Polygon Polygon |
+    // Binary SB.ByteString
 }
 
 impl ReQL {
+    pub fn string(string: &str) -> Self {
+        ReQL::Datum(Datum::String(string.to_string()))
+    }
 
+    pub fn run(&self, connection: &mut Connection) -> Result<json::Json, Error> {
+        let string_reql = self.serialize();
+        connection.send(&string_reql)
+    }
+
+    pub fn serialize(&self) -> String {
+        r#"[1,"foo",{}]"#.to_string()
+    }
 }
 
 
@@ -255,4 +296,12 @@ fn use_default_db() {
 
     conn.use_(None);
     assert!(matches!(conn.default_db, None));
+}
+
+#[test]
+fn create_db() {
+    let mut conn = Rethink::connect_default().unwrap();
+    let res = Rethink::db_create("zach").run(&mut conn);
+    println!("{:?}", res);
+    assert!(false)
 }
