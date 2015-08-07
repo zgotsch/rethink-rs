@@ -201,7 +201,10 @@ impl Rethink {
         };
         match c.connect() {
             Some(error) => Err(error),
-            None => Ok(c)
+            None => {
+                try!(c.handshake());
+                Ok(c)
+            }
         }
     }
 }
@@ -220,8 +223,8 @@ impl ReQL {
 #[test]
 fn it_works() {
   let mut conn = Rethink::connect_default().unwrap();
-  conn.handshake().unwrap();
   println!("{}", conn.send(r#"[1,[39,[[15,[[14,["blog"]],"users"]],{"name":"Michel"}]],{}]"#).unwrap());
+  // println!("{}", conn.send(r#"[1,"foo",{}]"#).unwrap());
   panic!("ASDF");
 }
 
