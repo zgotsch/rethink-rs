@@ -219,6 +219,17 @@ impl Rethink {
             optional_arguments: HashMap::new()
         }
     }
+
+    pub fn db_drop(db_name: &str) -> ReQL {
+        let mut args = Vec::new();
+        args.push(ReQL::string(db_name));
+
+        ReQL::Term {
+            command: Term_TermType::DB_DROP,
+            arguments: args,
+            optional_arguments: HashMap::new()
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -289,7 +300,7 @@ impl ReQL {
 #[derive(Debug)]
 pub struct RethinkResponse {
     response_type: Response_ResponseType,
-    result: json::Array,
+    result: Vec<json::Json>,
     backtrace: Option<Vec<String>>,
     // profile: ???,
     // notes: Vec<notes>,
@@ -380,7 +391,42 @@ fn use_default_db() {
 #[test]
 fn create_db() {
     let mut conn = Rethink::connect_default().unwrap();
-    let res = Rethink::db_create("zach").run(&mut conn);
-    println!("{:?}", res);
-    assert!(false)
+    let res = Rethink::db_create("db_create_test").run(&mut conn).unwrap();
+    match res.response_type {
+        Response_ResponseType::SUCCESS_ATOM => {
+            match res.result.first().unwrap() {
+                &json::Json::Object(ref o) => {
+                    let json_create_count = o.get("dbs_created").unwrap();
+                    match json_create_count {
+                        &json::Json::U64(n) => assert!(n == 1),
+                        _ => panic!("unrecognized response: {:?}", res)
+                    }
+                }
+                _ => panic!("unrecognized response: {:?}", res)
+            }
+        }
+        _ => panic!("got an unexpected response type: {:?}", res.response_type)
+    }
+}
+
+#[test]
+fn drop_db() {
+    let mut conn = Rethink::connect_default().unwrap();
+    Rethink::db_create("db_drop_test").run(&mut conn).unwrap();
+    let res = Rethink::db_drop("db_drop_test").run(&mut conn).unwrap();
+    match res.response_type {
+        Response_ResponseType::SUCCESS_ATOM => {
+            match res.result.first().unwrap() {
+                &json::Json::Object(ref o) => {
+                    let json_create_count = o.get("dbs_dropped").unwrap();
+                    match json_create_count {
+                        &json::Json::U64(n) => assert!(n == 1),
+                        _ => panic!("unrecognized response: {:?}", res)
+                    }
+                }
+                _ => panic!("unrecognized response: {:?}", res)
+            }
+        }
+        _ => panic!("got an unexpected response type: {:?}", res.response_type)
+    }
 }
