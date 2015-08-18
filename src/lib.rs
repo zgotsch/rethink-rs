@@ -14,6 +14,7 @@ use std::collections::hash_map::HashMap;
 extern crate protobuf; // depend on rust-protobuf runtime
 pub mod ql2;
 use ql2::Term_TermType;
+use ql2::Response_ResponseType;
 
 use rustc_serialize::json;
 
@@ -262,9 +263,9 @@ impl ReQL {
         ReQL::Datum(Datum::String(string.to_string()))
     }
 
-    pub fn run(&self, connection: &mut Connection) -> Result<json::Json, Error> {
+    pub fn run(&self, connection: &mut Connection) -> Result<RethinkResponse, Error> {
         let string_reql = self.serialize_toplevel();
-        connection.send(&string_reql)
+        connection.send(&string_reql).and_then(|json| { RethinkResponse::from_json(json) })
     }
 
     fn serialize_toplevel(&self) -> String {
@@ -285,6 +286,59 @@ impl ReQL {
     }
 }
 
+#[derive(Debug)]
+pub struct RethinkResponse {
+    response_type: Response_ResponseType,
+    result: json::Array,
+    backtrace: Option<Vec<String>>,
+    // profile: ???,
+    // notes: Vec<notes>,
+}
+
+impl RethinkResponse {
+    fn from_json(json: json::Json) -> Result<RethinkResponse, Error> {
+        // TODO(zach): this is so unreadable
+        if let json::Json::Object(mut o) = json {
+            return Ok(RethinkResponse {
+                response_type: match ::protobuf::ProtobufEnum::from_i32(match o.remove("t") {
+                    Some(json::Json::U64(n)) => n as i32,
+                    Some(json::Json::I64(n)) => n as i32,
+                    Some(json::Json::F64(n)) => n.floor() as i32,
+                    _ => return Err(From::from(UnknownError::new("Parse error: rethink response type was non-numeric".to_string())))
+                }) {
+                    Some(response_type) => response_type,
+                    None => return Err(From::from(UnknownError::new("Parse error: unrecognized rethink response type".to_string())))
+                },
+                result: match o.remove("r") {
+                    Some(json::Json::Array(json_array)) => json_array,
+                    Some(..) => return Err(From::from(UnknownError::new("Parse error: \"r\" field of rethink response should be an array".to_string()))),
+                    None => return Err(From::from(UnknownError::new("Parse error: rethink response didn't contain a response field".to_string())))
+                },
+                backtrace: o.remove("b").and_then(|backtrace_json| {
+                    match backtrace_json {
+                        json::Json::Array(backtrace_array) => {
+                            Some(backtrace_array.into_iter().map(|backtace_item| {
+                                // TODO(zach): I hope these are strings!
+                                match backtace_item {
+                                    json::Json::String(s) => s,
+                                    _ => "".to_string()
+                                }
+                            }).collect())
+                        },
+                        _ => None
+                    }
+                })
+            })
+        } else {
+            return Err(From::from(UnknownError::new("Parse error: expected the rethink json response to be an object".to_string())))
+        }
+    }
+}
+
+#[test]
+fn deserialize_response() {
+    // TODO(zach)
+}
 
 #[test]
 fn it_works() {
