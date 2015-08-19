@@ -258,7 +258,28 @@ pub enum Datum {
 }
 
 impl Datum {
-    pub fn serialize(&self) -> String {
+    fn from_json(json: json::Json) -> Datum {
+        match json {
+            json::Json::Null => Datum::Null,
+            json::Json::Boolean(b) => Datum::Bool(b),
+            json::Json::String(s) => Datum::String(s),
+            json::Json::U64(n) => Datum::Number(n as f64),
+            json::Json::I64(n) => Datum::Number(n as f64),
+            json::Json::F64(n) => Datum::Number(n),
+            json::Json::Array(json_array) => {
+                Datum::Array(json_array.into_iter().map(|json| {
+                    Datum::from_json(json)
+                }).collect())
+            },
+            json::Json::Object(json_object) => {
+                Datum::Object(json_object.into_iter().map(|(k, json)| {
+                    (k, Datum::from_json(json))
+                }).collect())
+            }
+        }
+    }
+
+    fn serialize(&self) -> String {
         match self {
             &Datum::Null => "null".to_string(),
             &Datum::Bool(b) => (if b { "true" } else { "false" }).to_string(),
@@ -300,7 +321,7 @@ impl ReQL {
 #[derive(Debug)]
 pub struct RethinkResponse {
     response_type: Response_ResponseType,
-    result: Vec<json::Json>,
+    result: Vec<Datum>,
     backtrace: Option<Vec<String>>,
     // profile: ???,
     // notes: Vec<notes>,
@@ -321,7 +342,9 @@ impl RethinkResponse {
                     None => return Err(From::from(UnknownError::new("Parse error: unrecognized rethink response type".to_string())))
                 },
                 result: match o.remove("r") {
-                    Some(json::Json::Array(json_array)) => json_array,
+                    Some(json::Json::Array(json_array)) => json_array.into_iter().map(|json| {
+                        Datum::from_json(json)
+                    }).collect(),
                     Some(..) => return Err(From::from(UnknownError::new("Parse error: \"r\" field of rethink response should be an array".to_string()))),
                     None => return Err(From::from(UnknownError::new("Parse error: rethink response didn't contain a response field".to_string())))
                 },
@@ -391,14 +414,15 @@ fn use_default_db() {
 #[test]
 fn create_db() {
     let mut conn = Rethink::connect_default().unwrap();
+    Rethink::db_drop("db_create_test").run(&mut conn).unwrap();
     let res = Rethink::db_create("db_create_test").run(&mut conn).unwrap();
     match res.response_type {
         Response_ResponseType::SUCCESS_ATOM => {
             match res.result.first().unwrap() {
-                &json::Json::Object(ref o) => {
+                &Datum::Object(ref o) => {
                     let json_create_count = o.get("dbs_created").unwrap();
                     match json_create_count {
-                        &json::Json::U64(n) => assert!(n == 1),
+                        &Datum::Number(n) => assert!(n.floor() as u64 == 1),
                         _ => panic!("unrecognized response: {:?}", res)
                     }
                 }
@@ -417,10 +441,10 @@ fn drop_db() {
     match res.response_type {
         Response_ResponseType::SUCCESS_ATOM => {
             match res.result.first().unwrap() {
-                &json::Json::Object(ref o) => {
+                &Datum::Object(ref o) => {
                     let json_create_count = o.get("dbs_dropped").unwrap();
                     match json_create_count {
-                        &json::Json::U64(n) => assert!(n == 1),
+                        &Datum::Number(n) => assert!(n.floor() as u64 == 1),
                         _ => panic!("unrecognized response: {:?}", res)
                     }
                 }
