@@ -187,7 +187,7 @@ pub struct Rethink;
 
 impl Rethink {
     pub fn connect_default() -> Result<Connection, Error> {
-        Rethink::connect(&"localhost".to_string(), 28015, Some(&"test".to_string()), &"".to_string(), 20)
+        Rethink::connect(&"localhost".to_string(), 28015, None, &"".to_string(), 20)
     }
 
     pub fn connect(host: &str, port: u16, default_db: Option<&str>, auth_key: &str, timeout_secs: u32) -> Result<Connection, Error> {
@@ -420,7 +420,7 @@ fn connect_disconnect() {
 #[test]
 fn use_default_db() {
     let mut conn = Rethink::connect_default().unwrap();
-    assert!(matches!(conn.default_db, Some(ref db_name) if db_name == "test"));
+    assert!(matches!(conn.default_db, None));
 
     conn.use_(Some("other_name"));
     assert!(matches!(conn.default_db, Some(ref db_name) if db_name == "other_name"));
