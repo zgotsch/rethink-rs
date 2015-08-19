@@ -238,6 +238,16 @@ impl Rethink {
             optional_arguments: HashMap::new()
         }
     }
+
+    pub fn expr(expression: Datum) -> ReQL {
+        ReQL::Datum(expression)
+    }
+    #[test]
+    fn test_expr() {
+        let conn = Rethink::connect_default().unwrap();
+        assert_eq!(Rethink::expr(Datum::String("foo".to_string())).serialize_query_for_connection(&conn),
+                   r##"[1,"foo",{}]"##)
+    }
 }
 
 #[derive(Debug)]
