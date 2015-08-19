@@ -250,6 +250,14 @@ impl Rethink {
     pub fn expr(expression: Datum) -> ReQL {
         ReQL::Datum(expression)
     }
+
+    pub fn db(db_name: &str) -> ReQL {
+        ReQL::Term {
+            command: Term_TermType::DB,
+            arguments: vec![ReQL::string(db_name)],
+            optional_arguments: HashMap::new()
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -311,7 +319,7 @@ impl Datum {
 }
 
 impl ReQL {
-    pub fn string(string: &str) -> Self {
+    fn string(string: &str) -> Self {
         ReQL::Datum(Datum::String(string.to_string()))
     }
 
@@ -444,6 +452,14 @@ fn sends_default_db() {
     conn.use_(Some("default_db_name"));
     assert_eq!(Rethink::expr(Datum::String("foo".to_string())).serialize_query_for_connection(&conn),
                r##"[1,"foo",{"db":[14,["default_db_name"]]}]"##)
+}
+
+#[test]
+fn test_db() {
+    let mut conn = Rethink::connect_default().unwrap();
+    let resp = Rethink::db("test").run(&mut conn).unwrap();
+    assert_eq!(resp.response_type, Response_ResponseType::RUNTIME_ERROR);
+    assert_eq!(resp.result.first().unwrap(), &Datum::String("Query result must be of type DATUM, GROUPED_DATA, or STREAM (got DATABASE).".to_string()));
 }
 
 #[test]
