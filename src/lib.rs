@@ -18,6 +18,15 @@ use ql2::Response_ResponseType;
 
 use rustc_serialize::json;
 
+fn coerce_json_string_array(json_array: Vec<json::Json>) -> Vec<String> {
+    json_array.into_iter().map(|json_string| {
+        match json_string {
+            json::Json::String(s) => s,
+            _ => panic!("Unexpected non-string json value when coercing to string array: {:?}", json_string)
+        }
+    }).collect()
+}
+
 #[derive(Debug)]
 pub struct UnknownError {
     description: String
@@ -230,6 +239,14 @@ impl Rethink {
             optional_arguments: HashMap::new()
         }
     }
+
+    pub fn db_list() -> ReQL {
+        ReQL::Term {
+            command: Term_TermType::DB_LIST,
+            arguments: Vec::new(),
+            optional_arguments: HashMap::new()
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -242,7 +259,7 @@ pub enum ReQL {
     Datum(Datum)
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Datum {
     Null,
     Bool(bool),
@@ -379,7 +396,7 @@ fn it_works() {
   let mut conn = Rethink::connect_default().unwrap();
   println!("{}", conn.send(r#"[1,[39,[[15,[[14,["blog"]],"users"]],{"name":"Michel"}]],{}]"#).unwrap());
   // println!("{}", conn.send(r#"[1,"foo",{}]"#).unwrap());
-  panic!("ASDF");
+  // panic!("ASDF");
 }
 
 #[macro_use] extern crate matches;
@@ -452,5 +469,18 @@ fn drop_db() {
             }
         }
         _ => panic!("got an unexpected response type: {:?}", res.response_type)
+    }
+}
+
+#[test]
+fn list_db() {
+    let mut conn = Rethink::connect_default().unwrap();
+    Rethink::db_create("db_list_test1").run(&mut conn).unwrap();
+    Rethink::db_create("db_list_test2").run(&mut conn).unwrap();
+    Rethink::db_create("db_list_test3").run(&mut conn).unwrap();
+    let res = Rethink::db_list().run(&mut conn).unwrap();
+    match res.result.first().unwrap() {
+        &Datum::Array(ref db_names) => assert!(db_names.contains(&Datum::String("db_list_test1".to_string()))),
+        _ => panic!("Expected an array of database names")
     }
 }
