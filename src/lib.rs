@@ -181,6 +181,14 @@ impl Connection {
             Closed => Err(From::from(UnknownError::new("Tried to send on a closed connection!".to_string())))
         }
     }
+
+    fn serialize_params(&self) -> String {
+        // TODO(zach): currently only default database affects this
+        match self.default_db {
+            Some(ref db_name) => format!(r##"{{"db":[14,["{}"]]}}"##, db_name),
+            _ => "{}".to_string()
+        }
+    }
 }
 
 pub struct Rethink;
@@ -301,7 +309,7 @@ impl Datum {
         match self {
             &Datum::Null => "null".to_string(),
             &Datum::Bool(b) => (if b { "true" } else { "false" }).to_string(),
-            &Datum::String(ref s) => s.clone(),
+            &Datum::String(ref s) => format!("\"{}\"", s),
             &Datum::Number(n) => n.to_string(),
             _ => "unimplemented".to_string()
         }
@@ -314,12 +322,12 @@ impl ReQL {
     }
 
     pub fn run(&self, connection: &mut Connection) -> Result<RethinkResponse, Error> {
-        let string_reql = self.serialize_toplevel();
+        let string_reql = self.serialize_query_for_connection(connection);
         connection.send(&string_reql).and_then(|json| { RethinkResponse::from_json(json) })
     }
 
-    fn serialize_toplevel(&self) -> String {
-        format!("[1,{},{{}}]", self.serialize())
+    fn serialize_query_for_connection(&self, connection: &Connection) -> String {
+        format!("[1,{},{}]", self.serialize(), connection.serialize_params())
     }
 
     fn serialize(&self) -> String {
@@ -327,9 +335,9 @@ impl ReQL {
             &ReQL::Term{ref command,
                         ref arguments,
                         ref optional_arguments} => {
-                            format!("[{},{:?},{}]", *command as u32, arguments.iter().map(|a| {
+                            format!("[{},[{}],{}]", *command as u32, arguments.iter().map(|a| {
                                 a.serialize()
-                            }).collect::<Vec<_>>(), "{}")
+                            }).collect::<Vec<_>>().connect(","), "{}")
                         },
             &ReQL::Datum(ref d) => d.serialize()
         }
@@ -427,6 +435,14 @@ fn use_default_db() {
 
     conn.use_(None);
     assert!(matches!(conn.default_db, None));
+}
+
+#[test]
+fn sends_default_db() {
+    let mut conn = Rethink::connect_default().unwrap();
+    conn.use_(Some("default_db_name"));
+    assert_eq!(Rethink::expr(Datum::String("foo".to_string())).serialize_query_for_connection(&conn),
+               r##"[1,"foo",{"db":[14,["default_db_name"]]}]"##)
 }
 
 #[test]
