@@ -18,15 +18,6 @@ use ql2::Response_ResponseType;
 
 use rustc_serialize::json;
 
-fn coerce_json_string_array(json_array: Vec<json::Json>) -> Vec<String> {
-    json_array.into_iter().map(|json_string| {
-        match json_string {
-            json::Json::String(s) => s,
-            _ => panic!("Unexpected non-string json value when coercing to string array: {:?}", json_string)
-        }
-    }).collect()
-}
-
 #[derive(Debug)]
 pub struct UnknownError {
     description: String
