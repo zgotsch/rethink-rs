@@ -270,6 +270,39 @@ pub enum ReQL {
     Datum(Datum)
 }
 
+impl ReQL {
+    fn string(string: &str) -> Self {
+        ReQL::Datum(Datum::String(string.to_string()))
+    }
+
+    pub fn run(&self, connection: &mut Connection) -> Result<RethinkResponse, Error> {
+        let string_reql = self.serialize_query_for_connection(connection);
+        connection.send(&string_reql).and_then(|json| { RethinkResponse::from_json(json) })
+    }
+
+    fn serialize_query_for_connection(&self, connection: &Connection) -> String {
+        format!("[1,{},{}]", self.serialize(), connection.serialize_params())
+    }
+
+    fn serialize(&self) -> String {
+        match self {
+            &ReQL::Term{ref command,
+                        ref arguments,
+                        ref optional_arguments} => {
+                            format!("[{},[{}],{{{}}}]",
+                            *command as u32,
+                            arguments.iter().map(|a| {
+                                a.serialize()
+                            }).collect::<Vec<_>>().connect(","),
+                            optional_arguments.iter().map(|(option_name, option_val)| {
+                                format!("\"{}\":{}", option_name, option_val.serialize())
+                            }).collect::<Vec<_>>().connect(","))
+                        },
+            &ReQL::Datum(ref d) => d.serialize()
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub enum Datum {
     Null,
@@ -314,39 +347,6 @@ impl Datum {
             &Datum::String(ref s) => format!("\"{}\"", s),
             &Datum::Number(n) => n.to_string(),
             _ => "unimplemented".to_string()
-        }
-    }
-}
-
-impl ReQL {
-    fn string(string: &str) -> Self {
-        ReQL::Datum(Datum::String(string.to_string()))
-    }
-
-    pub fn run(&self, connection: &mut Connection) -> Result<RethinkResponse, Error> {
-        let string_reql = self.serialize_query_for_connection(connection);
-        connection.send(&string_reql).and_then(|json| { RethinkResponse::from_json(json) })
-    }
-
-    fn serialize_query_for_connection(&self, connection: &Connection) -> String {
-        format!("[1,{},{}]", self.serialize(), connection.serialize_params())
-    }
-
-    fn serialize(&self) -> String {
-        match self {
-            &ReQL::Term{ref command,
-                        ref arguments,
-                        ref optional_arguments} => {
-                            format!("[{},[{}],{{{}}}]",
-                            *command as u32,
-                            arguments.iter().map(|a| {
-                                a.serialize()
-                            }).collect::<Vec<_>>().connect(","),
-                            optional_arguments.iter().map(|(option_name, option_val)| {
-                                format!("\"{}\":{}", option_name, option_val.serialize())
-                            }).collect::<Vec<_>>().connect(","))
-                        },
-            &ReQL::Datum(ref d) => d.serialize()
         }
     }
 }
