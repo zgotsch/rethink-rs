@@ -265,7 +265,7 @@ pub enum ReQL {
     Term {
         command: Term_TermType,
         arguments: Vec<ReQL>,
-        optional_arguments: HashMap<String, ReQL>
+        optional_arguments: HashMap<String, Datum>
     },
     Datum(Datum)
 }
@@ -337,9 +337,14 @@ impl ReQL {
             &ReQL::Term{ref command,
                         ref arguments,
                         ref optional_arguments} => {
-                            format!("[{},[{}],{}]", *command as u32, arguments.iter().map(|a| {
+                            format!("[{},[{}],{{{}}}]",
+                            *command as u32,
+                            arguments.iter().map(|a| {
                                 a.serialize()
-                            }).collect::<Vec<_>>().connect(","), "{}")
+                            }).collect::<Vec<_>>().connect(","),
+                            optional_arguments.iter().map(|(option_name, option_val)| {
+                                format!("\"{}\":{}", option_name, option_val.serialize())
+                            }).collect::<Vec<_>>().connect(","))
                         },
             &ReQL::Datum(ref d) => d.serialize()
         }
@@ -400,6 +405,24 @@ impl RethinkResponse {
 #[test]
 fn deserialize_response() {
     // TODO(zach)
+}
+
+#[test]
+fn serialize_reql() {
+    let mut options = HashMap::new();
+    options.insert("bar".to_string(), Datum::String("hello".to_string()));
+    options.insert("baz".to_string(), Datum::Bool(true));
+
+    let reql = ReQL::Term {
+        command: Term_TermType::DATUM,
+        arguments: vec![ReQL::string("foo")],
+        optional_arguments: options
+    };
+
+    let serialized = reql.serialize();
+    println!("{}", serialized);
+    assert!(serialized == r##"[1,["foo"],{"bar":"hello","baz":true}]"## ||
+            serialized == r##"[1,["foo"],{"baz":true,"bar":"hello"}]"##)
 }
 
 #[test]
