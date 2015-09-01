@@ -290,13 +290,13 @@ impl ReQL {
                         ref arguments,
                         ref optional_arguments} => {
                             format!("[{},[{}],{{{}}}]",
-                            *command as u32,
-                            arguments.iter().map(|a| {
-                                a.serialize()
-                            }).collect::<Vec<_>>().connect(","),
-                            optional_arguments.iter().map(|(option_name, option_val)| {
-                                format!("\"{}\":{}", option_name, option_val.serialize())
-                            }).collect::<Vec<_>>().connect(","))
+                                *command as u32,
+                                arguments.iter().map(|a| {
+                                    a.serialize()
+                                }).collect::<Vec<_>>().connect(","),
+                                optional_arguments.iter().map(|(option_name, option_val)| {
+                                    format!("\"{}\":{}", option_name, option_val.serialize())
+                                }).collect::<Vec<_>>().connect(","))
                         },
             &ReQL::Datum(ref d) => d.serialize()
         }
@@ -404,7 +404,10 @@ impl RethinkResponse {
 
 #[test]
 fn deserialize_response() {
-    // TODO(zach)
+    let resp = RethinkResponse::from_json(json::Json::from_str(r###"{"t":1,"r":["foo"],"n":[]}"###).unwrap()).unwrap();
+    assert!(resp.response_type == Response_ResponseType::SUCCESS_ATOM);
+    assert!(resp.result.first().unwrap() == &Datum::String("foo".to_string()));
+    assert!(resp.backtrace == Option::None)
 }
 
 #[test]
