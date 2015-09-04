@@ -289,14 +289,26 @@ impl ReQL {
             &ReQL::Term{ref command,
                         ref arguments,
                         ref optional_arguments} => {
-                            format!("[{},[{}],{{{}}}]",
-                                *command as u32,
-                                arguments.iter().map(|a| {
-                                    a.serialize()
-                                }).collect::<Vec<_>>().connect(","),
-                                optional_arguments.iter().map(|(option_name, option_val)| {
-                                    format!("\"{}\":{}", option_name, option_val.serialize())
-                                }).collect::<Vec<_>>().connect(","))
+                            let command_string = (*command as u32).to_string();
+                            let arguments_string = format!("[{}]", arguments.iter().map(|a| {
+                                a.serialize()
+                            }).collect::<Vec<_>>().connect(","));
+
+                            let mut parts = vec!(command_string, arguments_string);
+
+                            // Only send optional arguments if they exist (to match official
+                            // driver behavior)
+                            if !optional_arguments.is_empty() {
+                                let optional_arguments_string = format!(
+                                    "{{{}}}",
+                                    optional_arguments.iter().map(|(option_name, option_val)| {
+                                        format!("\"{}\":{}", option_name, option_val.serialize())
+                                    }).collect::<Vec<_>>().connect(",")
+                                );
+
+                                parts.push(optional_arguments_string);
+                            }
+                            format!("[{}]", parts.connect(","))
                         },
             &ReQL::Datum(ref d) => d.serialize()
         }
