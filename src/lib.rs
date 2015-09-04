@@ -1,4 +1,5 @@
-
+extern crate rand;
+use rand::Rng;
 extern crate byteorder;
 extern crate rustc_serialize;
 use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
@@ -268,6 +269,20 @@ impl Rethink {
     }
 }
 
+pub enum Durability {
+    Hard,
+    Soft
+}
+
+impl Durability {
+    fn serialize(&self) -> String {
+        match *self {
+            Durability::Hard => "hard",
+            Durability::Soft => "soft"
+        }.to_string()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum ReQL {
     Term {
@@ -329,6 +344,27 @@ impl ReQL {
             optional_arguments: HashMap::new()
         }
     }
+
+    pub fn get(&self, key: &str) -> ReQL {
+        ReQL::Term {
+            command: Term_TermType::GET,
+            arguments: vec![self.clone(), ReQL::string(key)],
+            optional_arguments: HashMap::new()
+        }
+    }
+
+    pub fn insert(&self, document: &Datum, durability: Option<Durability>) -> ReQL {
+        let mut optional_arguments = HashMap::new();
+        if let Some(d) = durability {
+            optional_arguments.insert("durability".to_string(), Datum::String(d.serialize()));
+        }
+
+        ReQL::Term {
+            command: Term_TermType::INSERT,
+            arguments: vec![self.clone(), ReQL::Datum(document.clone())],
+            optional_arguments: optional_arguments
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -347,7 +383,11 @@ pub enum Datum {
 }
 
 impl Datum {
-    fn from_json(json: json::Json) -> Datum {
+    fn from_str(json_str: &str) -> Self {
+        Datum::from_json(json::Json::from_str(json_str).unwrap())
+    }
+
+    fn from_json(json: json::Json) -> Self {
         match json {
             json::Json::Null => Datum::Null,
             json::Json::Boolean(b) => Datum::Bool(b),
@@ -374,7 +414,12 @@ impl Datum {
             &Datum::Bool(b) => (if b { "true" } else { "false" }).to_string(),
             &Datum::String(ref s) => format!("\"{}\"", s),
             &Datum::Number(n) => n.to_string(),
-            _ => "unimplemented".to_string()
+            &Datum::Object(ref m) => {
+                format!("{{{}}}", m.iter().map(|(k, datum)| {
+                    format!("\"{}\":{}", k, datum.serialize())
+                }).collect::<Vec<_>>().connect(","))
+            },
+            x => format!("unimplemented: {:?}", x)
         }
     }
 }
@@ -585,4 +630,33 @@ fn list_db() {
         &Datum::Array(ref db_names) => assert!(db_names.contains(&Datum::String("db_list_test1".to_string()))),
         _ => panic!("Expected an array of database names")
     }
+}
+
+#[test]
+fn test_insert_get() {
+    let mut conn = Rethink::connect_default().unwrap();
+
+    let mut rng = rand::thread_rng();
+    let key = rng.next_u64().to_string();
+
+    let table_query = Rethink::db("test").table("test_table");
+
+    let value = Datum::from_str(&format!(r###"{{"id": "{}", "value": 42}}"###, key));
+    let insert_result = table_query.insert(&value, None).run(&mut conn).unwrap();
+    // println!("serialized: {}", table_query.insert(&value, Some(Durability::Soft)).serialize_query_for_connection(&conn));
+    assert!(insert_result.response_type == Response_ResponseType::SUCCESS_ATOM);
+    match insert_result.result.first().unwrap() {
+        &Datum::Object(ref o) => {
+            if let &Datum::Number(n) = o.get("inserted").unwrap() {
+                assert_eq!(n as u64, 1)
+            } else {
+                panic!("Unexpected type of \"inserted\" metadata")
+            }
+        },
+        _ => panic!("Unexpected type in response")
+    }
+
+    let get_result = table_query.get(&key).run(&mut conn).unwrap();
+    assert!(get_result.response_type == Response_ResponseType::SUCCESS_ATOM);
+    assert_eq!(*get_result.result.first().unwrap(), value)
 }
