@@ -258,9 +258,17 @@ impl Rethink {
             optional_arguments: HashMap::new()
         }
     }
+
+    pub fn table(table_name: &str) -> ReQL {
+        ReQL::Term {
+            command: Term_TermType::TABLE,
+            arguments: vec![ReQL::string(table_name)],
+            optional_arguments: HashMap::new()
+        }
+    }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ReQL {
     Term {
         command: Term_TermType,
@@ -313,9 +321,17 @@ impl ReQL {
             &ReQL::Datum(ref d) => d.serialize()
         }
     }
+
+    pub fn table(&self, table_name: &str) -> ReQL {
+        ReQL::Term {
+            command: Term_TermType::TABLE,
+            arguments: vec![self.clone(), ReQL::string(table_name)],
+            optional_arguments: HashMap::new()
+        }
+    }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Datum {
     Null,
     Bool(bool),
@@ -470,6 +486,20 @@ fn test_expr() {
     let conn = Rethink::connect_default().unwrap();
     assert_eq!(Rethink::expr(Datum::String("foo".to_string())).serialize_query_for_connection(&conn),
                r##"[1,"foo",{}]"##)
+}
+
+#[test]
+fn test_table() {
+    let conn = Rethink::connect_default().unwrap();
+
+    let tablename = "__test_tablename";
+    let dbname = "__test_dbname";
+
+    assert_eq!(Rethink::table(tablename).serialize_query_for_connection(&conn),
+               format!("[1,[15,[\"{}\"]],{{}}]", tablename));
+
+    assert_eq!(Rethink::db(dbname).table(tablename).serialize_query_for_connection(&conn),
+               format!("[1,[15,[[14,[\"{}\"]],\"{}\"]],{{}}]", dbname, tablename))
 }
 
 #[test]
