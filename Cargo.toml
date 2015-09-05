@@ -1,7 +1,7 @@
 [package]
 name = "rethink"
 version = "0.1.0"
-authors = ["Jim Grandpre <jimtla@gmail.com>"]
+authors = ["Zach Gotsch <orbipedis@gmail.com>", "Jim Grandpre <jimtla@gmail.com>"]
 
 [dependencies]
 byteorder = "*"
