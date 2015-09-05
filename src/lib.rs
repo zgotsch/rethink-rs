@@ -5,6 +5,8 @@ extern crate protobuf;
 
 // pub use connection::{Connection};
 
+pub use rethink::rethink as r;
+
 pub mod rethink;
 pub mod connection;
 pub mod query;
